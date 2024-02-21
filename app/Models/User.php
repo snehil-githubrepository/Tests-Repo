@@ -17,13 +17,15 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'session_id', 
+        'resource_type'
     ];
 
     protected $hidden = [
         'password'
     ];
 
-    public function products()
+    public function products() : HasMany
     {
         return $this->hasMany(Product::class);
     }
