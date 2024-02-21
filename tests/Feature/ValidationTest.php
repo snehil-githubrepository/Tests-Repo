@@ -12,12 +12,10 @@ class ValidationTest extends TestCase
 
     public function create_product_requires_name_description_and_price()
     {
-        // Failure case: Missing required fields
         $response = $this->postJson('/api/products', []);
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['name', 'description', 'price']);
 
-        // Success case: All required fields provided
         $productData = [
             'name' => $this->faker->name,
             'description' => $this->faker->paragraph,
@@ -30,7 +28,6 @@ class ValidationTest extends TestCase
     /** @test */
     public function product_name_must_be_a_string()
     {
-        // Failure case: Name is not a string
         $response = $this->postJson('/api/products', [
             'name' => 123, // Invalid data type
             'description' => $this->faker->paragraph,

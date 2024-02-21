@@ -3,125 +3,138 @@
 namespace Tests\Feature;
 
 use App\Models\User;
-use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\WithFaker;
-use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Session;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Password;
 use Tests\TestCase;
 
 class AuthenticationTest extends TestCase
 {
-    use RefreshDatabase, WithFaker;
+    use RefreshDatabase;
 
-    public function user_can_login_with_valid_credentials()
+    public function testLoginSuccess()
     {
-        // Create a user
-        $user = User::factory()->create();
+        $user = User::factory()->create([
+            'password' => Hash::make('password'),
+        ]);
 
-        // Attempt to log in
-        $response = $this->post('/login', [
+        $response = $this->postJson('/login', [
             'email' => $user->email,
             'password' => 'password',
         ]);
 
-        // Assert successful login
-        $response->assertRedirect('/home');
-        $this->assertAuthenticatedAs($user);
-    }
-
-    public function user_cannot_login_with_invalid_credentials()
-    {
-        // Create a user
-        $user = User::factory()->create(['password' => Hash::make('password')]);
-
-        // Attempt to log in with invalid password
-        $response = $this->post('/login', [
-            'email' => $user->email,
-            'password' => 'invalidpassword',
-        ]);
-
-        // Assert login fails and user remains unauthenticated
-        $response->assertSessionHasErrors();
-        $this->assertGuest();
-    }
-
-    public function user_can_logout()
-    {
-        // Create a logged-in user
-        $user = User::factory()->create();
-        $this->actingAs($user);
-
-        // Attempt to log out
-        $response = $this->post('/logout');
-
-        // Assert successful logout
-        $response->assertRedirect('/');
-        $this->assertGuest();
-    }
-
-    public function unauthenticated_user_redirected_to_login()
-    {
-        // Attempt to access authenticated route without logging in
-        $response = $this->get('/home');
-
-        // Assert redirected to login
-        $response->assertRedirect('/login');
-    }
-
-    public function user_can_register()
-    {
-        // Generate user data for registration
-        $userData = [
-            'name' => $this->faker->name,
-            'email' => $this->faker->unique()->safeEmail,
-            'password' => 'password',
-            'password_confirmation' => 'password',
-        ];
-
-        // Attempt to register user
-        $response = $this->post('/register', $userData);
-
-        // Assert successful registration
-        $response->assertRedirect('/home');
+        $response->assertStatus(302); // Redirected after successful login
         $this->assertAuthenticated();
     }
 
-    public function user_cannot_register_with_existing_email()
+    public function testLoginFailureInvalidCredentials()
     {
-        // Create a user
-        $existingUser = User::factory()->create();
+        $response = $this->postJson('/login', [
+            'email' => 'nonexistent@example.com',
+            'password' => 'invalidpassword',
+        ]);
 
-        // Attempt to register with existing user's email
-        $userData = [
-            'name' => $this->faker->name,
-            'email' => $existingUser->email,
-            'password' => 'password',
-            'password_confirmation' => 'password',
-        ];
-        $response = $this->post('/register', $userData);
-
-        // Assert registration fails and user remains unauthenticated
-        $response->assertSessionHasErrors();
+        $response->assertStatus(401); // Unauthorized due to invalid credentials
         $this->assertGuest();
     }
 
-    public function remember_me_functionality_works()
+    public function testRegisterSuccess()
     {
-        // Create a user
-        $user = User::factory()->create(['password' => Hash::make('password')]);
-
-        // Attempt to log in with remember me
-        $response = $this->post('/login', [
-            'email' => $user->email,
+        $response = $this->postJson('/register', [
+            'name' => 'John Doe',
+            'email' => 'john@example.com',
             'password' => 'password',
-            'remember' => 'on',
+            'resource_type' => 'customer',
         ]);
 
-        // Assert successful login and session cookie exists
-        $response->assertRedirect('/home');
-        $this->assertAuthenticatedAs($user);
-        $this->assertNotNull(session()->getId());
+        $response->assertStatus(200);
+        $this->assertAuthenticated();
+    }
+
+    public function testRegisterFailure()
+    {
+        // Attempt to register with existing email
+        User::factory()->create(['email' => 'existing@example.com']);
+
+        $response = $this->postJson('/register', [
+            'name' => 'John Doe',
+            'email' => 'existing@example.com',
+            'password' => 'password',
+            'resource_type' => 'customer',
+        ]);
+
+        $response->assertStatus(422); // Unprocessable entity due to duplicate email
+        $this->assertGuest();
+    }
+
+    public function testShowProfile()
+    {
+        $user = User::factory()->create();
+
+        $response = $this->getJson("/profile/{$user->id}");
+
+        $response->assertStatus(200);
+        $response->assertJson(['user' => $user->toArray()]);
+    }
+
+    public function testUpdateProfileSuccess()
+    {
+        $user = User::factory()->create();
+
+        $response = $this->putJson("/profile/update", [
+            'id' => $user->id,
+            'name' => 'Updated Name',
+            'email' => 'updated@example.com',
+            'password' => 'newpassword',
+        ]);
+
+        $response->assertStatus(200);
+        $this->assertTrue(Hash::check('newpassword', $user->fresh()->password));
+    }
+
+    public function testUpdateProfileFailure()
+    {
+        $user = User::factory()->create();
+
+        // Attempt to update with invalid input (no email provided)
+        $response = $this->putJson("/profile/update", [
+            'id' => $user->id,
+            'name' => 'Updated Name',
+            'password' => 'newpassword',
+        ]);
+
+        $response->assertStatus(422); // Unprocessable entity due to missing email
+    }
+
+    public function testDeleteProfile()
+    {
+        $user = User::factory()->create();
+
+        $response = $this->deleteJson("/profile/delete/{$user->id}");
+
+        $response->assertStatus(200);
+        $this->assertDeleted($user);
+    }
+
+    public function testLogoutWhenNotLoggedIn()
+    {
+        $response = $this->post('/logout');
+
+        $response->assertStatus(302); // Redirected since not logged in
+    }
+
+    public function testLogoutWhenLoggedIn()
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user);
+
+        $response = $this->post('/logout');
+
+        $response->assertStatus(302); // Redirected after successful logout
+        $this->assertGuest();
     }
 }
