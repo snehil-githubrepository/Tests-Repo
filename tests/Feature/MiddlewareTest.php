@@ -7,52 +7,62 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\WithFaker;
 use App\Http\Middleware\CheckUserRole;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Hash;
+
 use Tests\TestCase;
 
 class MiddlewareTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function testAdminRoleAllowed()
+    public function testAdminUpdateProductAllowed()
     {
-        $adminUser = User::factory()->create(['role' => 'admin']);
+        $adminUser = User::factory()->create(['resource_type' => 'admin']);
 
         $this->actingAs($adminUser, 'web');
 
-        $request = Request::create('/admin-route', 'GET');
+        $request = Request::create('/product/update/1', 'PUT');
 
-        $next = function ($request) {
-            return response('OK', 200);
-        };
+        Route::put('/product/update/{id}', [ManagementController::class, 'updateProduct'])->middleware('admin');
 
-        $middleware = new CheckUserRole();
-        $response = $middleware->handle($request, $next);
-
-        // Assert that the response status code is 200 (OK)
-        $this->assertEquals(200, $response->status());
+        $response = $this->call('PUT', '/product/update/1');
+        $response->assertStatus(200);
     }
 
-    public function testCustomerRoleRestricted()
+    public function testNonAdminUpdateProductForbidden()
     {
-        // Create a mock customer user
-        $customerUser = User::factory()->create(['role' => 'customer']);
+        $nonAdminUser = User::factory()->create(['resource_type' => 'customer']);
+        $this->actingAs($nonAdminUser);
+        $request = Request::create('/product/update/1', 'PUT');
+        Route::put('/product/update/{id}', [ManagementController::class, 'updateProduct'])->middleware('admin');
+        $response = $this->call('PUT', '/product/update/1');
+        $response->assertStatus(403);
+    }
 
-        $this->actingAs($customerUser, 'web');
+    public function testAdminShowProductsAllowed()
+    {
+        $adminUser = User::factory()->create(['resource_type' => 'admin']);
 
-        // Create a mock request with a route that should be restricted for customers
-        $request = Request::create('/restricted-route', 'GET');
+        $this->actingAs($adminUser);
 
-        $next = function ($request) {
-            return response('OK', 200);
-        };
+        Route::get('/products', [ManagementController::class, 'showAllProducts'])->middleware('admin');
 
-        // Call the middleware
-        $middleware = new CheckUserRole();
-        $response = $middleware->handle($request, $next);
+        $response = $this->get('/products');
+        $response->assertStatus(200);
+    }
 
-        // Assert that the response status code is 403 (Forbidden)
-        $this->assertEquals(403, $response->status());
+    public function testNonAdminShowProductsForbidden()
+    {
+        $nonAdminUser = User::factory()->create(['resource_type' => 'customer']);
+
+        $this->actingAs($nonAdminUser);
+
+        Route::get('/products', [ManagementController::class, 'showAllProducts'])->middleware('admin');
+
+        $response = $this->get('/products');
+        $response->assertStatus(403);
     }
 
     // public function admin_can_access_product_management_routes()
