@@ -20,27 +20,32 @@ class MiddlewareTest extends TestCase
     /**
      * Test - Update product 
      */
-    //fail-check
+    //pass
     public function testAdminUpdateProductAllowed()
     {
-        $adminUser = User::factory()->create(['resource_type' => 'admin']);
-        $this->actingAs($adminUser, 'web');
-
-        // Send a PUT request to update product with ID 1
-        $response = $this->json('PUT', '/api/product/update/1');
-
-        // Debugging: Inspect the response content to understand the reason for failure
-        // dd($response->content());
-
-        // Assert the response status code
-        $response->assertStatus(200);
+         $adminUser = User::factory()->create(['resource_type' => 'admin']);
+         $this->actingAs($adminUser, 'web');
+     
+         $product = Product::factory()->create(['user_id' => $adminUser->id]);
+     
+         $productId = $product->id;
+     
+         $data = [
+             'product_name' => 'Updated Product Name',
+             'product_price' => 20.99,
+             'product_description' => 'Updated product description.',
+         ];
+     
+         $response = $this->json('PUT', "/api/product/update/{$productId}", $data);
+     
+         $response->assertStatus(200);
     }
 
     //pass 
     public function testNonAdminUpdateProductForbidden()
     {
         $nonAdminUser = User::factory()->create(['resource_type' => 'customer']);
-        $this->actingAs($nonAdminUser, 'web');
+        $this->actingAs($nonAdminUser);
         $request = Request::create('/api/product/update/1', 'PUT');
         Route::put('/api/product/update/{id}', [ManagementController::class, 'updateProduct'])->middleware('admin');
         $response = $this->call('PUT', '/api/product/update/1');
@@ -48,8 +53,8 @@ class MiddlewareTest extends TestCase
     }
 
     /**
-     * Test - show all products 
-     */
+    * Test - show all products 
+    */
 
     //pass
     public function testAdminShowProductsAllowed()
@@ -62,6 +67,7 @@ class MiddlewareTest extends TestCase
     
         $response->assertStatus(200);
     }
+
     //pass
     public function testNonAdminShowProductsForbidden()
     {
@@ -75,39 +81,4 @@ class MiddlewareTest extends TestCase
         $response->assertStatus(403);
     }
 
-    // public function admin_can_access_product_management_routes()
-    // {
-    //     $admin = User::factory()->create(['is_admin' => true]);
-
-    //     $response = $this->actingAs($admin)->get('/admin/products');
-
-    //     $response->assertStatus(200);
-    // }
-
-    // public function customer_cannot_access_product_management_routes()
-    // {
-    //     $user = User::factory()->create(); // Non-admin user
-
-    //     $response = $this->actingAs($user)->get('/admin/products');
-
-    //     $response->assertStatus(403); // Forbidden
-    // }
-
-    // public function admin_can_access_admin_dashboard()
-    // {
-    //     $admin = User::factory()->create(['is_admin' => true]);
-
-    //     $response = $this->actingAs($admin, 'web')->get('/admin/dashboard');
-
-    //     $response->assertStatus(200);
-    // }
-
-    // public function regular_user_cannot_access_admin_dashboard()
-    // {
-    //     $user = User::factory()->create();
-
-    //     $response = $this->actingAs($user, 'web')->get('/admin/dashboard');
-
-    //     $response->assertStatus(403);
-    // }
 }
