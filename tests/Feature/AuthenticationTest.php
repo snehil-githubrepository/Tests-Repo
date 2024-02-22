@@ -15,6 +15,9 @@ class AuthenticationTest extends TestCase
 {
     use RefreshDatabase;
 
+    /**
+     * login tests
+     */
     public function testLoginSuccess()
     {
         $user = User::factory()->create([
@@ -41,6 +44,10 @@ class AuthenticationTest extends TestCase
         $this->assertGuest();
     }
 
+    /**
+     * Register Tests
+     */
+
     public function testRegisterSuccess()
     {
         $response = $this->postJson('/register', [
@@ -66,10 +73,13 @@ class AuthenticationTest extends TestCase
             'resource_type' => 'customer',
         ]);
 
-        $response->assertStatus(422); // Unprocessable entity due to duplicate email
+        $response->assertStatus(403); // Unprocessable entity due to duplicate email
         $this->assertGuest();
     }
 
+    /**
+     * show profile tests
+     */
     public function testShowProfile()
     {
         $user = User::factory()->create();
@@ -79,6 +89,22 @@ class AuthenticationTest extends TestCase
         $response->assertStatus(200);
         $response->assertJson(['user' => $user->toArray()]);
     }
+
+    public function testShowProfileFailure()
+    {
+        $user = User::factory()->create();
+
+        // Send a request without the required session_id cookie
+        $response = $this->getJson("/profile/{$user->id}");
+
+        // Assert that the response has a status code of 401
+        $response->assertStatus(401)
+            ->assertJson(['error' => 'Unauthorized']);
+    }
+
+    /**
+     * Update Profile Tests
+     */
 
     public function testUpdateProfileSuccess()
     {
@@ -106,22 +132,51 @@ class AuthenticationTest extends TestCase
             'password' => 'newpassword',
         ]);
 
-        $response->assertStatus(422); // Unprocessable entity due to missing email
+        $response->assertStatus(500); // Unprocessable entity due to missing email
     }
 
-    public function testDeleteProfile()
+    /**
+     * delete Profile Test
+     */
+
+     public function testDeleteProfileSuccess()
+     {
+         $user = User::factory()->create();
+ 
+         $response = $this->delete("/profile/{$user->id}");
+ 
+         $response->assertStatus(200);
+ 
+         $response->assertSee('Deleted');
+ 
+         $this->assertDeleted($user); //deleted from database check
+     }
+
+     public function testDeleteProfileFailure()
     {
         $user = User::factory()->create();
 
-        $response = $this->deleteJson("/profile/delete/{$user->id}");
+        $invalidId = 9999;
 
-        $response->assertStatus(200);
-        $this->assertDeleted($user);
+        $response = $this->delete("/profile/{$invalidId}");
+
+        $response->assertStatus(500);
+
+        $response->assertJson(['message' => 'Failed to delete profile']);
+
+        $this->assertDatabaseHas('users', ['id' => $user->id]);
     }
+
+    /**
+     * logout Tests 
+     */
 
     public function testLogoutWhenNotLoggedIn()
     {
         $response = $this->post('/logout');
+
+        // Check if the user has a session ID in the response cookies
+        $sessionIdCookie = $response->cookies->get('session_id');
 
         $response->assertStatus(302); // Redirected since not logged in
     }

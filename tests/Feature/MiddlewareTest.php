@@ -17,51 +17,61 @@ class MiddlewareTest extends TestCase
 {
     use RefreshDatabase;
 
+    /**
+     * Test - Update product 
+     */
+    //fail-check
     public function testAdminUpdateProductAllowed()
     {
         $adminUser = User::factory()->create(['resource_type' => 'admin']);
-
         $this->actingAs($adminUser, 'web');
 
-        $request = Request::create('/product/update/1', 'PUT');
+        // Send a PUT request to update product with ID 1
+        $response = $this->json('PUT', '/api/product/update/1');
 
-        Route::put('/product/update/{id}', [ManagementController::class, 'updateProduct'])->middleware('admin');
+        // Debugging: Inspect the response content to understand the reason for failure
+        // dd($response->content());
 
-        $response = $this->call('PUT', '/product/update/1');
+        // Assert the response status code
         $response->assertStatus(200);
     }
 
+    //pass 
     public function testNonAdminUpdateProductForbidden()
     {
         $nonAdminUser = User::factory()->create(['resource_type' => 'customer']);
-        $this->actingAs($nonAdminUser);
-        $request = Request::create('/product/update/1', 'PUT');
-        Route::put('/product/update/{id}', [ManagementController::class, 'updateProduct'])->middleware('admin');
-        $response = $this->call('PUT', '/product/update/1');
+        $this->actingAs($nonAdminUser, 'web');
+        $request = Request::create('/api/product/update/1', 'PUT');
+        Route::put('/api/product/update/{id}', [ManagementController::class, 'updateProduct'])->middleware('admin');
+        $response = $this->call('PUT', '/api/product/update/1');
         $response->assertStatus(403);
     }
 
+    /**
+     * Test - show all products 
+     */
+
+    //pass
     public function testAdminShowProductsAllowed()
     {
         $adminUser = User::factory()->create(['resource_type' => 'admin']);
 
-        $this->actingAs($adminUser);
-
-        Route::get('/products', [ManagementController::class, 'showAllProducts'])->middleware('admin');
-
-        $response = $this->get('/products');
+        $this->actingAs($adminUser, 'web');
+    
+        $response = $this->get('/api/products');
+    
         $response->assertStatus(200);
     }
-
+    //pass
     public function testNonAdminShowProductsForbidden()
     {
         $nonAdminUser = User::factory()->create(['resource_type' => 'customer']);
 
         $this->actingAs($nonAdminUser);
 
-        Route::get('/products', [ManagementController::class, 'showAllProducts'])->middleware('admin');
+        Route::get('/api/products', [ManagementController::class, 'showAllProducts'])->middleware('admin');
 
-        $response = $this->get('/products');
+        $response = $this->get('/api/products');
         $response->assertStatus(403);
     }
 
