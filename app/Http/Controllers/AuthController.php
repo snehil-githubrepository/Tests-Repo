@@ -71,7 +71,7 @@ class AuthController extends Controller
                 // Set session ID in a cookie
                 $cookie = cookie('session_id', $sessionId);
 
-                return (new UserResource($user))->response()->withCookie($cookie)->setStatusCode(200);
+                return (new UserResource($user))->response()->withCookie($cookie)->setStatusCode(302); //re-direction
             } else {
                 throw ValidationException::withMessages(['email' => 'Invalid email or password']);
             }
@@ -96,46 +96,59 @@ class AuthController extends Controller
             auth()->logout();
         }
     
-        return redirect('/login');
+        return response()->json(['error' => 'User is not logged in'])
+        ->withHeaders(['Location' => '/login'])
+        ->setStatusCode(302);;
     }
 
     public function showProfile(Request $request, $id) {
-        $user = User::find($id);
-
-        if ($request->hasCookie('session_id')) {
-            $sessionId = $request->cookie('session_id');
-    
-            return (new UserResource($user))->response()->setStatusCode(200);
-        } else {
-            return response()->json(['error' => 'Unauthorized'], 403);
-        }
+            if (Auth::check()) {
+                $user = Auth::user();
+        
+                if ($user->id == $id) {
+                    return (new UserResource($user))->response()->setStatusCode(200);
+                } else {
+                    // Return a 403 Forbidden response if the user is not authorized to access the requested profile
+                    return response()->json(['error' => 'Forbidden'], 403);
+                }
+            } else {
+                // Return a 401 Unauthorized response if the user is not authenticated
+                return response()->json(['error' => 'Unauthorized'], 401);
+            }
     }
 
-    public function updateProfile(Request $request) {
+    public function updateProfile(Request $request, $id) {
         //update profile logic
         $validatedData = $request->validate([
-            'id' => 'required|exists:users,id',
-            'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255',
-            'password' => 'required|string|min:6',
+            'name' => 'sometimes|string|max:255',
+            'email' => 'sometimes|string|email|max:255',
+            'password' => 'sometimes|string|min:6',
         ]);
-
+    
         DB::beginTransaction();
-
-        try{
-            $user = User::find($validatedData['id']);
-
-            $user->name = $validatedData['name'];
-            $user->email = $validatedData['email'];
-            $user->password = bcrypt($validatedData['password']); // Hash the password
-            
+    
+        try {
+            $user = User::findOrFail($id);
+    
+            // Update user attributes only if provided in the request
+            if (isset($validatedData['name'])) {
+                $user->name = $validatedData['name'];
+            }
+    
+            if (isset($validatedData['email'])) {
+                $user->email = $validatedData['email'];
+            }
+    
+            if (isset($validatedData['password'])) {
+                $user->password = bcrypt($validatedData['password']);
+            }
+    
             $user->save();
-
+    
             DB::commit();
-
+    
             return response()->json(['message' => 'Successfully Updated', 'id' => $user->id], 200);
-
-        } catch(\Exception $e) {
+        } catch (\Exception $e) {
             DB::rollback();
             return response()->json(['message' => 'Failed to update profile'], 500);
         }
