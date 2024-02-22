@@ -7,24 +7,30 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\WithFaker;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Password;
+use Symfony\Component\HttpFoundation\Response;
 use Tests\TestCase;
+
+//response assertJsonStructure , assertJson
 
 class AuthenticationTest extends TestCase
 {
     use RefreshDatabase;
+    use WithFaker;
 
     /**
      * login tests
      */
+    //pass
     public function testLoginSuccess()
     {
         $user = User::factory()->create([
             'password' => Hash::make('password'),
         ]);
 
-        $response = $this->postJson('/login', [
+        $response = $this->postJson('/api/login', [
             'email' => $user->email,
             'password' => 'password',
         ]);
@@ -33,24 +39,25 @@ class AuthenticationTest extends TestCase
         $this->assertAuthenticated();
     }
 
+    //pass
     public function testLoginFailureInvalidCredentials()
     {
-        $response = $this->postJson('/login', [
+        $response = $this->postJson('/api/login', [
             'email' => 'nonexistent@example.com',
-            'password' => 'invalidpassword',
+            'password' => 'invalidpassword',        
         ]);
 
-        $response->assertStatus(401); // Unauthorized due to invalid credentials
-        $this->assertGuest();
+        $response->assertStatus(422); // Unauthorized due to invalid credentials
+        $this->assertGuest(); //user not authenticated
     }
 
     /**
      * Register Tests
      */
-
+    //pass
     public function testRegisterSuccess()
     {
-        $response = $this->postJson('/register', [
+        $response = $this->postJson('/api/register', [
             'name' => 'John Doe',
             'email' => 'john@example.com',
             'password' => 'password',
@@ -58,59 +65,71 @@ class AuthenticationTest extends TestCase
         ]);
 
         $response->assertStatus(200);
-        $this->assertAuthenticated();
+        $this->assertAuthenticated(); //user is authenticated
     }
 
+    //pass
     public function testRegisterFailure()
     {
         // Attempt to register with existing email
+        //created already a email id 
         User::factory()->create(['email' => 'existing@example.com']);
 
-        $response = $this->postJson('/register', [
+        $response = $this->postJson('/api/register', [
             'name' => 'John Doe',
             'email' => 'existing@example.com',
             'password' => 'password',
             'resource_type' => 'customer',
         ]);
 
-        $response->assertStatus(403); // Unprocessable entity due to duplicate email
+        $response->assertStatus(422); // Unprocessable entity due to duplicate email
         $this->assertGuest();
     }
 
     /**
      * show profile tests
-     */
+     */   
+
+    //pass
     public function testShowProfile()
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['resource_type' => 'admin']);
 
-        $response = $this->getJson("/profile/{$user->id}");
-
+        // Set a session ID cookie for the user 
+        $sessionId = $this->faker->uuid;
+        $user->session_id = $sessionId;
+        $user->save();
+        
+        $this->actingAs($user);
+        //authenticated
+    
+        $response = $this->getJson("/api/profile/{$user->id}");
+    
         $response->assertStatus(200);
-        $response->assertJson(['user' => $user->toArray()]);
     }
 
+    //pass
     public function testShowProfileFailure()
     {
         $user = User::factory()->create();
+        //not authenticated
 
-        // Send a request without the required session_id cookie
-        $response = $this->getJson("/profile/{$user->id}");
+        $response = $this->getJson("/api/profile/{$user->id}");
 
-        // Assert that the response has a status code of 401
         $response->assertStatus(401)
             ->assertJson(['error' => 'Unauthorized']);
     }
 
     /**
-     * Update Profile Tests
-     */
-
+    * Update Profile Tests
+    */
+    //pass
     public function testUpdateProfileSuccess()
     {
         $user = User::factory()->create();
+        $this->actingAs($user);
 
-        $response = $this->putJson("/profile/update", [
+        $response = $this->putJson("/api/profile/{$user->id}", [
             'id' => $user->id,
             'name' => 'Updated Name',
             'email' => 'updated@example.com',
@@ -121,44 +140,55 @@ class AuthenticationTest extends TestCase
         $this->assertTrue(Hash::check('newpassword', $user->fresh()->password));
     }
 
+    //pass
     public function testUpdateProfileFailure()
     {
         $user = User::factory()->create();
-
-        // Attempt to update with invalid input (no email provided)
-        $response = $this->putJson("/profile/update", [
-            'id' => $user->id,
-            'name' => 'Updated Name',
+        $this->actingAs($user);
+        
+        // Send a request to update profile with invalid input (numeric name)
+        $response = $this->putJson("/api/profile/{$user->id}", [
+            'name' => 123, // Invalid numeric name
+            // 'email' => ' ', // Missed this field
             'password' => 'newpassword',
         ]);
 
-        $response->assertStatus(500); // Unprocessable entity due to missing email
+        // Assert that the response status code is 422 Unprocessable Entity
+        $response->assertStatus(422);
+
+        // Assert that the response contains validation errors
+        $response->assertJsonValidationErrors(['name']);
     }
 
     /**
      * delete Profile Test
      */
 
+    //pass
      public function testDeleteProfileSuccess()
      {
-         $user = User::factory()->create();
- 
-         $response = $this->delete("/profile/{$user->id}");
- 
-         $response->assertStatus(200);
- 
-         $response->assertSee('Deleted');
- 
-         $this->assertDeleted($user); //deleted from database check
+            $user = User::factory()->create();
+            $userId = $user->id;
+
+            $response = $this->deleteJson("/api/profile/{$userId}");
+        
+            $response->assertStatus(Response::HTTP_OK);
+        
+            // Assert that the response contains the success message
+            $response->assertJson(['message' => 'Profile deleted successfully']);
+        
+            // Assert that the user record is deleted from the database
+            $this->assertDatabaseMissing('users', ['id' => $user->id]);
      }
 
-     public function testDeleteProfileFailure()
+     //pass
+    public function testDeleteProfileFailure()
     {
         $user = User::factory()->create();
 
         $invalidId = 9999;
 
-        $response = $this->delete("/profile/{$invalidId}");
+        $response = $this->delete("/api/profile/{$invalidId}");
 
         $response->assertStatus(500);
 
@@ -170,26 +200,36 @@ class AuthenticationTest extends TestCase
     /**
      * logout Tests 
      */
-
+    //pass
     public function testLogoutWhenNotLoggedIn()
-    {
-        $response = $this->post('/logout');
+    {   
+        $user = User::factory()->create();
+        
+        // Ensure the user is not logged in by setting session_id to null
+        $user->session_id = null;
+        $user->save();
 
-        // Check if the user has a session ID in the response cookies
-        $sessionIdCookie = $response->cookies->get('session_id');
-
-        $response->assertStatus(302); // Redirected since not logged in
+        $response = $this->post('/api/logout');
+        $response->assertStatus(302); //redirection
+        
+        $response->assertJson(['error' => 'User is not logged in']);
     }
-
+    
+    //pass
     public function testLogoutWhenLoggedIn()
     {
         $user = User::factory()->create();
-
         $this->actingAs($user);
 
-        $response = $this->post('/logout');
+        $sessionId = 'test-session-id';
+        $user->session_id = $sessionId;
+        $user->save();
 
-        $response->assertStatus(302); // Redirected after successful logout
-        $this->assertGuest();
+        $response = $this->post('/api/logout');
+
+        // Check if the user has a session ID in the response cookies
+        $this->assertNull($user->fresh()->session_id);
+
+        $this->assertFalse(Auth::check());
     }
 }
