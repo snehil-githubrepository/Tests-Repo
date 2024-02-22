@@ -13,47 +13,91 @@ class AdminManagementTest extends TestCase
 {
     use RefreshDatabase;
     
-    use RefreshDatabase;
+    /**
+     * Store Product Check
+     */
 
+    //pass
     public function testStoreProduct()
-    {
+    {   
+        $user = User::factory()->create();
+        $userId = $user->id;
+        $this->actingAs($user);
+        
+        // Prepare data for the new product, using the user's ID
         $data = [
+            'user_id' => $userId,
             'product_name' => 'Test Product',
             'product_price' => 10.99,
             'product_description' => 'This is a test product.',
         ];
+        
+        $response = $this->postJson('/api/product/store', $data);
+        
+        // Assert that the request was successful (status code 201)
+        $response->assertStatus(201);        
 
-        $response = $this->postJson('/product/store', $data);
-
-        $response->assertStatus(201)
-            ->assertJsonStructure([
-                'message',
-                'product' => [
-                    'id',
-                    'product_name',
-                    'product_price',
-                    'product_description',
-                ],
-            ]);
+        //assertJson to give both keys and values
+        $response->assertJson([
+            'message' => 'Product created successfully',
+            'product' => [
+                //prod_id can be dynamic as well 
+                'product_id' => 1,
+                'user_id' => $userId,
+                'product_name' => 'Test Product',
+                'product_price' => 10.99,
+                'product_description' => 'This is a test product.',
+            ],
+        ]);
+    }
+    //pass
+    public function testStoreProductFailed()
+    {   
+        $user = User::factory()->create();
+        $userId = $user->id;
+        $this->actingAs($user);
+        
+        // Prepare data for the new product, using the user's ID
+        $data = [
+            'user_id' => $userId,
+            'product_name' => 'Test Product',
+            // 'product_price' => 10.99,
+            'product_description' => 'This is a test product.',
+        ];
+        
+        $response = $this->postJson('/api/product/store', $data);
+        
+        $response->assertStatus(422);  //validation error
     }
 
-    public function testUpdateProduct()
-    {
-        $product = Product::factory()->create();
+    /**
+     * Update Product Test
+     */
 
+    //pass
+    public function testUpdateProductSuccessTest()
+    {
+        $user = User::factory()->create(['resource_type' => 'admin']);
+        $userId = $user->id;
+
+        $this->actingAs($user);
+
+        $product = Product::factory()->create(['user_id' => $userId]);
+
+        //updated data
         $data = [
             'product_name' => 'Updated Product',
             'product_price' => 15.99,
             'product_description' => 'This is an updated product.',
         ];
 
-        $response = $this->putJson("/product/update/{$product->id}", $data);
-
+        $response = $this->putJson("/api/product/update/{$product->id}", $data);
+        //jsonStructure to only give keys , no value
         $response->assertStatus(200)
             ->assertJsonStructure([
                 'message',
                 'product' => [
-                    'id',
+                    'product_id',
                     'product_name',
                     'product_price',
                     'product_description',
@@ -61,180 +105,201 @@ class AdminManagementTest extends TestCase
             ]);
     }
 
+    //pass
+    public function testUpdateProductFailureTest()
+    {
+        $user = User::factory()->create(['resource_type' => 'customer']);
+        $userId = $user->id;
+
+        $this->actingAs($user);
+
+        $product = Product::factory()->create(['user_id' => $userId]);
+
+        //updated data
+        $data = [
+            'product_name' => 'Updated Product 2',
+            'product_price' => 15.992,
+            'product_description' => 'This is an updated product 2.',
+        ];
+
+        $response = $this->putJson("/api/product/update/{$product->id}", $data);
+        
+        $response->assertStatus(403); //UnAuthorized
+    }
+    
+    //pass
+    public function testUpdateProductFailureTestForValidation()
+    {
+        $user = User::factory()->create(['resource_type' => 'admin']);
+        $userId = $user->id;
+
+        $this->actingAs($user);
+
+        $product = Product::factory()->create(['user_id' => $userId]);
+
+        //updated data
+        $data = [
+            // 'product_name' => 'Updated Product 3',
+            'product_price' => 15.9921,
+            'product_description' => 'This is an updated product 3.',
+        ];
+
+        $response = $this->putJson("/api/product/update/{$product->id}", $data);
+        
+        $response->assertStatus(422); //Validation error
+    }
+
+    /**
+     * Delete product Test
+     */
+
+    //pass
     public function testDeleteProduct()
     {
-        $product = Product::factory()->create();
-
-        $response = $this->delete("/product/{$product->id}");
-
+        // Create a user
+        $user = User::factory()->create([
+            'resource_type' => 'admin'
+        ]);
+        $this->actingAs($user);
+        
+        // Create a product
+        $product = Product::factory()->create(['user_id' => $user->id]);
+        $productId = $product->id; // Get the ID before deletion
+    
+        // Send a DELETE request to delete the product
+        $response = $this->delete("/api/product/{$product->id}");
+    
+        // Check if the product is deleted successfully
         $response->assertStatus(200)
             ->assertJson([
                 'message' => 'Product deleted successfully',
+                'deleted_product_id' => $productId // Check for the deleted product ID
             ]);
+    
+        // Ensure that the product is actually deleted from the database
+        $this->assertDatabaseMissing('products', ['id' => $productId]);
     }
 
-    public function testShowAllProducts()
+    //pass
+    public function testDeleteProductForCustomerNotAllowed()
     {
-        $products = Product::factory()->count(3)->create();
+        // Create a user
+        $user = User::factory()->create([
+            'resource_type' => 'customer'
+        ]);
+        $this->actingAs($user);
+        
+        // Create a product
+        $product = Product::factory()->create(['user_id' => $user->id]);
+        $productId = $product->id; // Get the ID before deletion
+    
+        // Send a DELETE request to delete the product
+        $response = $this->delete("/api/product/{$product->id}");
+    
+        // Check if the product is deleted successfully
+        $response->assertStatus(403);
+    }
 
-        $response = $this->getJson('/products');
+    /**
+     * Show All products check
+     */
 
-        $response->assertStatus(200)
-            ->assertJsonCount(3) // Check if all products are returned
-            ->assertJsonStructure([
+    //pass
+    public function testShowAllProductsForAdmin()
+    {
+        $adminUser = User::factory()->create(['resource_type' => 'admin']);
+        $this->actingAs($adminUser);
+
+        $regularUser = User::factory()->create(['resource_type' => 'customer']);
+
+        // Create products for testing
+        Product::factory()->create(['product_name' => 'Test Product 1', 'user_id' => $adminUser->id]);
+        Product::factory()->create(['product_name' => 'Test Product 2', 'user_id' => $regularUser->id]);
+        Product::factory()->create(['product_name' => 'Another Product', 'user_id' => $adminUser->id]);
+
+        // Access the products endpoint
+        $response = $this->getJson('/api/products');
+        
+        // Assert that the response is successful
+        $response->assertStatus(200);
+
+        // Assert that the response contains the expected number of products and has the correct structure
+        $response->assertJsonCount(3, 'data'); // Check if all products are returned
+        $response->assertJsonStructure([
+            'data' => [
                 '*' => [
-                    'id',
+                    'product_id',
                     'product_name',
                     'product_price',
                     'product_description',
                 ],
-            ]);
+            ],
+        ]);
     }
 
-    public function testSearchProducts()
+    //pass
+    public function testShowAllProductsForCustomerFailed()
     {
+        $customerUser = User::factory()->create(['resource_type' => 'customer']);
+        $this->actingAs($customerUser);
+
+        $adminUser = User::factory()->create(['resource_type' => 'admin']);
+
         // Create products for testing
-        Product::factory()->create(['product_name' => 'Test Product 1']);
-        Product::factory()->create(['product_name' => 'Test Product 2']);
-        Product::factory()->create(['product_name' => 'Another Product']);
+        Product::factory()->create(['product_name' => 'Test Product 1', 'user_id' => $customerUser->id]);
+        Product::factory()->create(['product_name' => 'Test Product 2', 'user_id' => $customerUser->id]);
+        Product::factory()->create(['product_name' => 'Another Product', 'user_id' => $adminUser->id]);
+
+        // Access the products endpoint
+        $response = $this->getJson('/api/products');
+        
+        // Assert that the response is successful
+        $response->assertStatus(403);
+    }
+
+    //pass
+    public function testRegularUserCannotSeeAllProducts()
+    {
+        // Create a regular user
+        $regularUser = User::factory()->create(['resource_type' => 'customer']);
+        $this->actingAs($regularUser);
+
+        // Try to access the products endpoint as a regular user
+        $response = $this->getJson('/api/products');
+
+        // Assert that the response status code is 403 Forbidden
+        $response->assertStatus(403);
+    }
+
+    /**
+     * Search Products Test
+     */
+    //pass
+    public function testSearchProducts()
+    {   
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        // Create products for testing
+        Product::factory()->create(['product_name' => 'Test Product 1', 'user_id' => $user->id]);
+        Product::factory()->create(['product_name' => 'Test Product 2', 'user_id' => $user->id]);
+        Product::factory()->create(['product_name' => 'Another Product', 'user_id' => $user->id]);
 
         // Search for products
-        $response = $this->getJson('/products/search?query=Test');
+        $response = $this->getJson('/api/products/search?query=Test');
 
         $response->assertStatus(200)
-            ->assertJsonCount(2) // Check if the correct number of products are returned
+            ->assertJsonCount(2, 'data') // Check if the correct number of products are returned
             ->assertJsonStructure([
-                '*' => [
-                    'id',
-                    'product_name',
-                    'product_price',
-                    'product_description',
+                'data' => [
+                    '*' => [
+                        'product_id',
+                        'product_name',
+                        'product_price',
+                        'product_description',
+                    ],
                 ],
             ]);
     }
-
-
-    // public function a_user_can_register()
-    // {
-    //     $userData = [
-    //         'name' => 'John Doe',
-    //         'email' => 'john@example.com',
-    //         'password' => 'password123',
-    //     ];
-
-    //     $response = $this->postJson('/api/register', $userData);
-
-    //     $response->assertStatus(201);
-    //     $this->assertDatabaseHas('users', ['email' => 'john@example.com']);
-    // }
-
-    // public function a_user_can_login()
-    // {
-    //     $user = User::factory()->create([
-    //         'password' => Hash::make('password123'),
-    //     ]);
-
-    //     $loginData = [
-    //         'email' => $user->email,
-    //         'password' => 'password123',
-    //     ];
-
-    //     $response = $this->postJson('/api/login', $loginData);
-
-    //     $response->assertStatus(200)
-    //         ->assertJsonStructure(['token']);
-    // }
-
-    // public function an_authenticated_user_can_update_own_profile()
-    // {
-    //     $user = User::factory()->create();
-
-    //     $updateData = [
-    //         'name' => 'Jane Doe',
-    //         'email' => 'jane@example.com',
-    //     ];
-
-    //     $response = $this->actingAs($user)->putJson('/api/user', $updateData);
-
-    //     $response->assertStatus(200);
-    //     $this->assertDatabaseHas('users', [
-    //         'id' => $user->id,
-    //         'name' => 'Jane Doe',
-    //         'email' => 'jane@example.com',
-    //     ]);
-    // }
-
-    // public function an_authenticated_user_can_delete_own_account()
-    // {
-    //     $user = User::factory()->create();
-
-    //     $response = $this->actingAs($user)->deleteJson('/api/user');
-
-    //     $response->assertStatus(204);
-    //     $this->assertDatabaseMissing('users', ['id' => $user->id]);
-    // }
-
-    // public function an_admin_can_create_a_product()
-    // {
-    //     $admin = User::factory()->create(['is_admin' => true]);
-
-    //     $productData = [
-    //         'name' => 'Sample Product',
-    //         'description' => 'This is a sample product',
-    //         'price' => 99.99,
-    //     ];
-
-    //     $response = $this->actingAs($admin)->postJson('/api/products', $productData);
-
-    //     $response->assertStatus(201);
-    //     $this->assertDatabaseHas('products', ['name' => 'Sample Product']);
-    // }
-
-    // public function an_admin_can_view_a_product()
-    // {
-    //     $admin = User::factory()->create(['is_admin' => true]);
-    //     $product = Product::factory()->create();
-
-    //     $response = $this->actingAs($admin)->getJson("/api/products/{$product->id}");
-
-    //     $response->assertStatus(200)
-    //         ->assertJson([
-    //             'id' => $product->id,
-    //             'name' => $product->name,
-    //             'description' => $product->description,
-    //             'price' => $product->price,
-    //         ]);
-    // }
-
-    // public function an_admin_can_update_a_product()
-    // {
-    //     $admin = User::factory()->create(['is_admin' => true]);
-    //     $product = Product::factory()->create();
-
-    //     $updateData = [
-    //         'name' => 'Updated Product Name',
-    //         'price' => 129.99,
-    //     ];
-
-    //     $response = $this->actingAs($admin)->putJson("/api/products/{$product->id}", $updateData);
-
-    //     $response->assertStatus(200);
-    //     $this->assertDatabaseHas('products', [
-    //         'id' => $product->id,
-    //         'name' => 'Updated Product Name',
-    //         'price' => 129.99,
-    //     ]);
-    // }
-
-    // public function an_admin_can_delete_a_product()
-    // {
-    //     $admin = User::factory()->create(['is_admin' => true]);
-    //     $product = Product::factory()->create();
-
-    //     $response = $this->actingAs($admin)->deleteJson("/api/products/{$product->id}");
-
-    //     $response->assertStatus(204);
-    //     $this->assertDatabaseMissing('products', ['id' => $product->id]);
-    // }
 
 }
