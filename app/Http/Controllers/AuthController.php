@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Exceptions\ControllerException;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
+use App\Http\Resources\UserResource;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use App\Models\User;
@@ -49,10 +50,9 @@ class AuthController extends Controller
         $sessionId = $this->generateSessionId();
         $this->setSessionId($user, $sessionId);
 
-        return response()->json([
-            'message' => 'User registered successfully',
-            'user' => $user
-        ])->cookie('session_id', $sessionId)->status(200); 
+        $cookie = cookie('session_id', $sessionId);
+
+        return (new UserResource($user))->response()->withCookie($cookie)->setStatusCode(200);
     }
 
     public function login(Request $request) {
@@ -66,19 +66,19 @@ class AuthController extends Controller
             if (Auth::attempt($credentials)) {
                 $user = Auth::user();
                 $sessionId = $this->generateSessionId();
-                
-                // Store the session ID in the user record
                 $this->setSessionId($user, $sessionId);
             
-                // Set session ID in a secure and HttpOnly cookie
-                $response = redirect()->intended('home');
-                $response->cookie('session_id', $sessionId, 0, '/', null, true, true); // Secure and HttpOnly
-                
-                return $response;
+                // Set session ID in a cookie
+                $cookie = cookie('session_id', $sessionId);
+
+                return (new UserResource($user))->response()->withCookie($cookie)->setStatusCode(200);
             } else {
-                // Return a specific error message for invalid credentials
-                return response()->json(["message"=> "Invalid email or password"], 403);
+                throw ValidationException::withMessages(['email' => 'Invalid email or password']);
             }
+            // else {
+            //     // Return a specific error message for invalid credentials
+            //     return response()->json(["message"=> "Invalid email or password"], 403);
+            // }
         
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
@@ -99,12 +99,16 @@ class AuthController extends Controller
         return redirect('/login');
     }
 
-    public function showProfile($id) {
-        //show Profile of User
+    public function showProfile(Request $request, $id) {
         $user = User::find($id);
-        return response()->json([
-            'user' => $user
-        ]);
+
+        if ($request->hasCookie('session_id')) {
+            $sessionId = $request->cookie('session_id');
+    
+            return (new UserResource($user))->response()->setStatusCode(200);
+        } else {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
     }
 
     public function updateProfile(Request $request) {
@@ -150,7 +154,7 @@ class AuthController extends Controller
             
             DB::commit();
 
-            return response('Deleted', Response::HTTP_OK);
+            return response()->json(['message' => 'Profile deleted successfully'], Response::HTTP_OK);
         } catch (\Exception $e) {
             DB::rollback();
             return response()->json(['message' => 'Failed to delete profile'], 500);
