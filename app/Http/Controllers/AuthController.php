@@ -113,7 +113,7 @@ class AuthController extends Controller
                 }
             } else {
                 // Return a 401 Unauthorized response if the user is not authenticated
-                return response()->json(['error' => 'Unauthorized'], 401);
+                return response()->json(['error' => 'Unauthorized'], 403);
             }
     }
 
