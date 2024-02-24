@@ -26,5 +26,9 @@ class Handler extends ExceptionHandler
         $this->renderable(function (NotAuthorizedException $e, $request) {
             return $e->render($request);
         });
+
+        $this->renderable(function (TestException $e, $request) {
+            return $e->render($request);
+        });
     }
 }
