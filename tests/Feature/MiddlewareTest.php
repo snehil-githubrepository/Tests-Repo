@@ -23,62 +23,180 @@ class MiddlewareTest extends TestCase
     //pass
     public function testAdminUpdateProductAllowed()
     {
-         $adminUser = User::factory()->create(['resource_type' => 'admin']);
-         $this->actingAs($adminUser, 'web');
-     
-         $product = Product::factory()->create(['user_id' => $adminUser->id]);
-     
-         $productId = $product->id;
-     
-         $data = [
-             'product_name' => 'Updated Product Name',
-             'product_price' => 20.99,
-             'product_description' => 'Updated product description.',
-         ];
-     
-         $response = $this->json('PUT', "/api/product/update/{$productId}", $data);
-     
-         $response->assertStatus(200);
+        try {
+            // Create an admin user
+            $adminUser = User::factory()->create(['resource_type' => 'admin']);
+            $this->actingAs($adminUser, 'web');
+
+            // Create a product owned by the admin user
+            $product = Product::factory()->create(['user_id' => $adminUser->id]);
+            $productId = $product->id;
+
+            // Updated data for the product
+            $data = [
+                'product_name' => 'Updated Product Name',
+                'product_price' => 20.99,
+                'product_description' => 'Updated product description.',
+            ];
+
+            // Send a PUT request to update the product
+            $response = $this->json('PUT', "/api/product/update/{$productId}", $data);
+
+            // Assert that the response status is 200 OK
+            $response->assertStatus(200);
+
+            // Assert that the product in the database has been updated
+            $this->assertDatabaseHas('products', [
+                'id' => $productId,
+                'product_name' => 'Updated Product Name',
+                'product_price' => 20.99,
+                'product_description' => 'Updated product description.',
+            ]);
+        } catch (\Exception $e) {
+            // If any exception occurs during the test, it will be caught here
+            throw $e;
+        } finally {
+            // Clean up: Delete the admin user and the product created for the test
+            if (isset($adminUser)) {
+                $adminUser->delete();
+                $this->assertDatabaseMissing('users', ['id' => $adminUser->id]);
+            }
+            if (isset($product)) {
+                $product->delete();
+                $this->assertDatabaseMissing('products', ['id' => $productId]);
+            }
+        }
     }
+
 
     //pass 
     public function testNonAdminUpdateProductForbidden()
     {
-        $nonAdminUser = User::factory()->create(['resource_type' => 'customer']);
-        $this->actingAs($nonAdminUser);
-        $request = Request::create('/api/product/update/1', 'PUT');
-        Route::put('/api/product/update/{id}', [ManagementController::class, 'updateProduct'])->middleware('admin');
-        $response = $this->call('PUT', '/api/product/update/1');
-        $response->assertStatus(403);
+        try {
+            $nonAdminUser = User::factory()->create(['resource_type' => 'customer']);
+            $this->actingAs($nonAdminUser);
+
+            $product = Product::factory()->create(['user_id' => $nonAdminUser->id]);
+            $productId = $product->id;
+
+            $requestUrl = "/api/product/update/{$productId}";
+            $request = Request::create($requestUrl, 'PUT');
+
+            Route::put('/api/product/update/{id}', [ManagementController::class, 'updateProduct'])->middleware('admin');
+
+            $response = $this->call('PUT', $requestUrl);
+
+            $response->assertStatus(403);
+
+        } catch (\Exception $e) {
+            // If any exception occurs during the test, it will be caught here
+            throw $e;
+        } finally {
+            // Clean up: Delete the non-admin user
+            if (isset($nonAdminUser)) {
+                $nonAdminUser->delete();
+                $this->assertDatabaseMissing('users', ['id' => $nonAdminUser->id]);
+            }
+
+            if (isset($product)) {
+                $product->delete();
+                $this->assertDatabaseMissing('products', ['id' => $product->id]);
+            }
+        }
     }
 
     /**
     * Test - show all products 
     */
 
-    //pass
+    //pass-done 
     public function testAdminShowProductsAllowed()
     {
-        $adminUser = User::factory()->create(['resource_type' => 'admin']);
+        try {
+            // Create an admin user
+            $adminUser = User::factory()->create(['resource_type' => 'admin']);
+            $this->actingAs($adminUser, 'web');
 
-        $this->actingAs($adminUser, 'web');
-    
-        $response = $this->get('/api/products');
-    
-        $response->assertStatus(200);
+            $adminProducts = Product::factory()->count(3)->create(['user_id' => $adminUser->id]);
+
+            $response = $this->get('/api/products');
+
+            $response->assertStatus(200);
+
+            foreach ($adminProducts as $product) {
+                $response->assertJsonFragment([
+                    'product_id' => $product->id,
+                    'product_name' => $product->product_name,
+                    // Add more fields as needed
+                ]);
+            }
+
+            // Assert that the response contains products from all users
+            $allProducts = Product::all();
+            foreach ($allProducts as $product) {
+                $response->assertJsonFragment([
+                    'product_id' => $product->id,
+                    'product_name' => $product->product_name,
+                    // Add more fields as needed
+                ]);
+            }
+
+            // Assert that the admin products exist in the database
+            foreach ($adminProducts as $product) {
+                $this->assertDatabaseHas('products', [
+                    'id' => $product->id,
+                    'user_id' => $adminUser->id,
+                    'product_name' => $product->product_name,
+                    // Add more fields as needed
+                ]);
+            }
+        } catch (\Exception $e) {
+            throw $e;
+        } finally {
+            // Clean up - delete admin products and admin user
+            if (isset($adminProducts)) {
+                foreach ($adminProducts as $product) {
+                    $product->delete();
+                    $this->assertDatabaseMissing('products', ['id' => $product->id]);
+                }
+            }
+
+            if (isset($adminUser)) {
+                $adminUser->delete();
+                $this->assertDatabaseMissing('users', ['id' => $adminUser->id]);
+            }
+        }
     }
+
+
 
     //pass
     public function testNonAdminShowProductsForbidden()
     {
-        $nonAdminUser = User::factory()->create(['resource_type' => 'customer']);
+        try {
+            // Create a non-admin user
+            $nonAdminUser = User::factory()->create(['resource_type' => 'customer']);
+            $this->actingAs($nonAdminUser);
 
-        $this->actingAs($nonAdminUser);
+            // Define the route with the admin middleware
+            Route::get('/api/products', [ManagementController::class, 'showAllProducts'])->middleware('admin');
 
-        Route::get('/api/products', [ManagementController::class, 'showAllProducts'])->middleware('admin');
+            // Send a GET request to the endpoint
+            $response = $this->get('/api/products');
 
-        $response = $this->get('/api/products');
-        $response->assertStatus(403);
+            // Assert that the response status is 403 Forbidden
+            $response->assertStatus(403);
+
+            // Assert that the database does not contain any products
+            $this->assertDatabaseCount('products', 0);
+        } catch (\Exception $e) {
+            throw $e;
+        } finally {
+            // Clean up - delete the non-admin user
+            if (isset($nonAdminUser)) {
+                $nonAdminUser->delete();
+                $this->assertDatabaseMissing('users', ['id' => $nonAdminUser->id]);
+            }
+        }
     }
-
 }
