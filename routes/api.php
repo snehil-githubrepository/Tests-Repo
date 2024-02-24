@@ -8,9 +8,9 @@ use App\Http\Controllers\ManagementController;
 //new api routes
 
 //Auth Routes
-Route::post('register', [AuthController::class, 'register'])->middleware('auth.custom');
-Route::post('login', [AuthController::class, 'login'])->middleware('auth.custom');
-Route::post('logout', [AuthController::class, 'logout'])->middleware('auth.custom');
+Route::post('register', [AuthController::class, 'register']);
+Route::post('login', [AuthController::class, 'login']);
+Route::post('logout', [AuthController::class, 'logout']);
 
 Route::get('/profile/{id}', [AuthController::class, 'showProfile'])->middleware('auth.custom');
 Route::put('/profile/{id}', [AuthController::class, 'updateProfile'])->middleware('auth.custom');
