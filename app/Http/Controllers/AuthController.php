@@ -34,7 +34,18 @@ class AuthController extends Controller
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:6',
             'resource_type' => 'required|string|in:customer,admin',
-        ]);
+        ],
+        [
+            'name.required' => 'The name is required.',
+            'name.string' => 'The name must be a string.',
+            'email.required' => 'The email is required.',
+            'email.string' => 'The email must be a string.',
+            'password.required' => 'The password is required.',
+            'password.string' => 'The password must be a string.',
+            'resource_type.required' => 'The resource_type is required.',
+            'resource_type.string' => 'The resource_type must be a string.',
+        ]
+    );
 
         $user = User::create([
             'name' => $validatedData['name'],
@@ -61,6 +72,11 @@ class AuthController extends Controller
             $credentials = $request->validate([
                 'email' => 'required|string|email',
                 'password' => 'required|string',
+            ], [
+            'email.required' => 'The email is required.',
+            'email.string' => 'The email must be a string.',
+            'password.required' => 'The password is required.',
+            'password.string' => 'The password must be a string.',
             ]);
             
             if (Auth::attempt($credentials)) {
@@ -123,6 +139,13 @@ class AuthController extends Controller
             'name' => 'sometimes|string|max:255',
             'email' => 'sometimes|string|email|max:255',
             'password' => 'sometimes|string|min:6',
+        ], [
+            'name.required' => 'The name is required.',
+            'name.string' => 'The name must be a string.',
+            'email.required' => 'The email is required.',
+            'email.string' => 'The email must be a string.',
+            'password.required' => 'The password is required.',
+            'password.string' => 'The password must be a string.',
         ]);
     
         DB::beginTransaction();
